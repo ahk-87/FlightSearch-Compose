@@ -30,7 +30,9 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -64,9 +66,9 @@ fun FlightSearchScreen(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     viewModel: FlightsViewModel = viewModel(factory = FlightsViewModel.factory)
 ) {
-    //val foundAirports by viewModel.foundAirports.collectAsState(emptyList())
-    //val flights by viewModel.flights.collectAsState(emptyList())
-    //val favFlights by viewModel.favFlights.collectAsState()
+    val foundAirports by viewModel.foundAirports.collectAsState(emptyList())
+    val flights by viewModel.flights.collectAsState(emptyList())
+    val favFlights by viewModel.favoriteFlights.collectAsState()
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -75,19 +77,40 @@ fun FlightSearchScreen(
             .padding(contentPadding)
     ) {
         MainTextField(
-            model = viewModel,
+            input = viewModel.input,
             onInputChange = viewModel::inputChanged,
             modifier = Modifier.padding(16.dp)
         )
         Box {
-            FlightsList(
-                model = viewModel,
-                favoriteChanged = viewModel::favoriteChanged,
-                modifier = Modifier.padding(horizontal = 8.dp)
-            )
+            if (!viewModel.showFavoriteFlights) {
+                FlightsList(
+                    title = "Flights from ${viewModel.iataCode}",
+                    cardColor = Color(0xFFD2F4FA),
+                    flights = flights,
+                    favoriteChanged = viewModel::favoriteChanged,
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                )
+            } else {
+                if (favFlights.isNotEmpty()) {
+                    FlightsList(
+                        title = "Favorite flights",
+                        cardColor = MaterialTheme.colorScheme.inverseSurface,
+                        flights = favFlights,
+                        favoriteChanged = viewModel::favoriteChanged,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                } else {
+                    Box(modifier = modifier.fillMaxSize()) {
+                        Text(
+                            text = "No favorite flights",
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
+                }
+            }
 
             SuggestionList(
-                model = viewModel,
+                airports = foundAirports,
                 onSelectAirport = viewModel::showFlightsFromAirport,
             )
         }
@@ -97,18 +120,18 @@ fun FlightSearchScreen(
 
 @Composable
 fun MainTextField(
-    model: FlightsViewModel,
+    input: String,
     onInputChange: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val lfm = LocalFocusManager.current
 
-    BackHandler(enabled = model.input.isNotEmpty()) {
+    BackHandler(enabled = input.isNotEmpty()) {
         onInputChange("")
     }
 
     TextField(
-        value = model.input,
+        value = input,
         singleLine = true,
         onValueChange = onInputChange,
         placeholder = { Text(text = "Search airport") },
@@ -125,11 +148,18 @@ fun MainTextField(
             )
         },
         trailingIcon = {
-            Icon(
-                imageVector = Icons.Default.KeyboardVoice,
-                contentDescription = null,
-                modifier = Modifier.clickable {}
-            )
+            FilledTonalIconButton(
+                onClick = { },
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = Color.Transparent
+                ),
+                modifier = Modifier.padding(horizontal = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.KeyboardVoice,
+                    contentDescription = null,
+                )
+            }
         },
         shape = MaterialTheme.shapes.extraLarge,
         colors = TextFieldDefaults.colors(
@@ -145,12 +175,11 @@ var lastAirports = emptyList<Airport>()
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SuggestionList(
-    model: FlightsViewModel,
+    airports: List<Airport>,
     onSelectAirport: (Airport) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val lfm = LocalFocusManager.current
-    val airports by model.foundAirports.collectAsState(emptyList())
     if (airports.isNotEmpty()) lastAirports = airports
 
     Column(
@@ -182,53 +211,28 @@ fun SuggestionList(
 
 @Composable
 fun FlightsList(
-    model: FlightsViewModel,
+    title: String,
+    cardColor: Color,
+    flights: List<Flight>,
     favoriteChanged: (Flight) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val flights by model.flights.collectAsState(emptyList())
-    val favFlights by model.favoriteFlights.collectAsState()
-
-    val cardColor: Color
-    val title: String
-    val selectedFlights: List<Flight>
-
-    if (model.showFavoriteFlights) {
-        title = "Favorite flights"
-        cardColor = MaterialTheme.colorScheme.inverseSurface
-        selectedFlights = favFlights
-
-    } else {
-        title = "Flights from ${model.iataCode}"
-        cardColor = Color(0xFFD2F4FA)
-        selectedFlights = flights
-    }
-
-    if (model.showFavoriteFlights && favFlights.isEmpty()) {
-        Box(modifier = modifier.fillMaxSize()) {
-            Text(
-                text = "No favorite flights",
-                modifier = Modifier.align(Alignment.Center)
-            )
-        }
-    } else {
-        Column(modifier = modifier.fillMaxWidth()) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge
-            )
-            Spacer(modifier = Modifier.height(24.dp))
-            LazyColumn(
-                state = LazyListState(),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                items(selectedFlights, key = { it.hashCode() }) { flight ->
-                    FlightCard(
-                        flight = flight,
-                        cardColor = cardColor,
-                        favoriteChanged = { favoriteChanged(flight) }
-                    )
-                }
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        LazyColumn(
+            state = LazyListState(),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            items(flights, key = { it.hashCode() }) { flight ->
+                FlightCard(
+                    flight = flight,
+                    cardColor = cardColor,
+                    favoriteChanged = { favoriteChanged(flight) }
+                )
             }
         }
     }
@@ -241,7 +245,6 @@ fun FlightCard(
     cardColor: Color,
     modifier: Modifier = Modifier,
 ) {
-    var isFavorite by remember { mutableStateOf(flight.isFavorite) }
     Card(
         colors = CardDefaults.cardColors(
             containerColor = cardColor
@@ -268,20 +271,29 @@ fun FlightCard(
                     airport = flight.toAirport
                 )
             }
-
-            Icon(
-                tint = if (isFavorite) Color(0xFFCE5A0C) else Color(0xFF999999),
-                imageVector = Icons.Rounded.Star,
-                contentDescription = null,
-                modifier = Modifier
-                    .size(48.dp)
-                    .clickable {
-                        isFavorite = !isFavorite
-                        favoriteChanged()
-                    }
-            )
+            StarIcon(isFavoriteFlight = flight.isFavorite, favoriteChanged = favoriteChanged)
         }
     }
+}
+
+@Composable
+fun StarIcon(
+    isFavoriteFlight: Boolean,
+    favoriteChanged: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isFavorite by remember { mutableStateOf(isFavoriteFlight) }
+    Icon(
+        tint = if (isFavorite) Color(0xFFCE5A0C) else Color(0xFF999999),
+        imageVector = Icons.Rounded.Star,
+        contentDescription = null,
+        modifier = modifier
+            .size(48.dp)
+            .clickable {
+                isFavorite = !isFavorite
+                favoriteChanged()
+            }
+    )
 }
 
 @Composable
